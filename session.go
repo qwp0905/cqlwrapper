@@ -13,7 +13,7 @@ type Session struct {
 	consistency gocql.Consistency
 }
 
-func CreateSession(cluster *gocql.ClusterConfig) (*Session, error) {
+func New(cluster *gocql.ClusterConfig) (*Session, error) {
 	session, err := cluster.CreateSession()
 	if err != nil {
 		return nil, errors.WithStack(err)
