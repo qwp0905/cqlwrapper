@@ -93,7 +93,7 @@ func (qb *SelectQueryBuilder) WhereLte(a any) *SelectQueryBuilder {
 	return qb.bind(opLte, a)
 }
 
-func (qb *SelectQueryBuilder) WhereIn(field string, args ...any) *SelectQueryBuilder {
+func (qb *SelectQueryBuilder) WhereIn(field string, args any) *SelectQueryBuilder {
 	qb.args = append(qb.args, argument{
 		field:    field,
 		operator: opIn,
