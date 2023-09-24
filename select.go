@@ -187,8 +187,11 @@ func (qb *SelectQueryBuilder) Count() (int, error) {
 }
 
 func (qb *SelectQueryBuilder) Scanner() *Scanner {
+	if qb.err != nil {
+		return &Scanner{iter: nil, err: qb.err}
+	}
 	iter := qb.do()
-	return &Scanner{iter: iter, rows: []any{}, err: qb.err}
+	return &Scanner{iter: iter, rows: []any{}, err: nil}
 }
 
 type Scanner struct {
@@ -198,6 +201,9 @@ type Scanner struct {
 }
 
 func (s *Scanner) Next() bool {
+	if s.err != nil {
+		return false
+	}
 	rd, err := s.iter.RowData()
 	if err != nil {
 		s.err = errors.WithStack(err)
