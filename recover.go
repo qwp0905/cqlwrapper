@@ -12,6 +12,10 @@ func (qb *queryRecover) recover() {
 	}
 }
 
+func (qb *queryRecover) error() error {
+	return qb.err
+}
+
 func recoverer() *queryRecover {
 	return &queryRecover{err: nil}
 }

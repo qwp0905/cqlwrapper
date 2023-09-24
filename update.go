@@ -120,8 +120,8 @@ func (qb *UpdateQueryBuilder) getArgs() []any {
 }
 
 func (qb *UpdateQueryBuilder) Exec() error {
-	if qb.err != nil {
-		return qb.err
+	if err := qb.error(); err != nil {
+		return err
 	}
 
 	return errors.WithStack(qb.session.

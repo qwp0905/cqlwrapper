@@ -74,9 +74,10 @@ func (qb *DeleteQueryBuilder) getQuery() string {
 }
 
 func (qb *DeleteQueryBuilder) Exec() error {
-	if qb.err != nil {
-		return qb.err
+	if err := qb.error(); err != nil {
+		return err
 	}
+
 	return errors.WithStack(qb.session.
 		Query(qb.getQuery()).
 		Bind(qb.getArgs()...).

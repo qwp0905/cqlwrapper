@@ -79,8 +79,8 @@ func (qb *InsertQueryBuilder) getArgs() []any {
 }
 
 func (qb *InsertQueryBuilder) Exec() error {
-	if qb.err != nil {
-		return qb.err
+	if err := qb.error(); err != nil {
+		return err
 	}
 
 	return errors.WithStack(qb.session.

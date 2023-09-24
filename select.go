@@ -150,8 +150,8 @@ func (qb *SelectQueryBuilder) do() *gocql.Iter {
 }
 
 func (qb *SelectQueryBuilder) First(s any) error {
-	if qb.err != nil {
-		return qb.err
+	if err := qb.error(); err != nil {
+		return err
 	}
 
 	qb = qb.Limit(1)
@@ -175,8 +175,8 @@ func (qb *SelectQueryBuilder) First(s any) error {
 }
 
 func (qb *SelectQueryBuilder) Count() (int, error) {
-	if qb.err != nil {
-		return 0, qb.err
+	if err := qb.error(); err != nil {
+		return 0, err
 	}
 	iter := qb.do()
 	count := iter.NumRows()
@@ -187,8 +187,8 @@ func (qb *SelectQueryBuilder) Count() (int, error) {
 }
 
 func (qb *SelectQueryBuilder) Scanner() *Scanner {
-	if qb.err != nil {
-		return &Scanner{iter: nil, err: qb.err}
+	if err := qb.error(); err != nil {
+		return &Scanner{iter: nil, err: err}
 	}
 	iter := qb.do()
 	return &Scanner{iter: iter, rows: []any{}, err: nil}
