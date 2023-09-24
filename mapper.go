@@ -77,6 +77,9 @@ func iterateTypes(a any, f func(t *reflect.StructField, i int)) {
 
 func assignValues(a any, values []any) error {
 	return iterateTypeAndValues(a, func(t *reflect.StructField, v *reflect.Value, i int) error {
+		if !v.CanSet() {
+			return errors.Errorf("cannot assign on field %s", t.Name)
+		}
 		value := reflect.Indirect(reflect.ValueOf(values[i]))
 		if !value.CanConvert(t.Type) {
 			return errors.Errorf("cannot convert %s to %s", value.Type().Name(), t.Type.Name())

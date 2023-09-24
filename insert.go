@@ -10,6 +10,7 @@ import (
 )
 
 type InsertQueryBuilder struct {
+	*queryRecover
 	session     *Session
 	ctx         context.Context
 	consistency gocql.Consistency
@@ -20,11 +21,12 @@ type InsertQueryBuilder struct {
 
 func newInsertQueryBuilder(ctx context.Context, session *Session) *InsertQueryBuilder {
 	return &InsertQueryBuilder{
-		ctx:         ctx,
-		consistency: session.consistency,
-		session:     session,
-		ifNotExists: false,
-		args:        []argument{},
+		queryRecover: recoverer(),
+		ctx:          ctx,
+		consistency:  session.consistency,
+		session:      session,
+		ifNotExists:  false,
+		args:         []argument{},
 	}
 }
 
@@ -39,6 +41,7 @@ func (qb *InsertQueryBuilder) IfNotExists() *InsertQueryBuilder {
 }
 
 func (qb *InsertQueryBuilder) Values(a any) *InsertQueryBuilder {
+	defer qb.recover()
 	if qb.into == "" {
 		qb.into = getTableName(a)
 	}
@@ -76,6 +79,10 @@ func (qb *InsertQueryBuilder) getArgs() []any {
 }
 
 func (qb *InsertQueryBuilder) Exec() error {
+	if qb.err != nil {
+		return qb.err
+	}
+
 	return errors.WithStack(qb.session.
 		Query(qb.getQuery()).
 		Bind(qb.getArgs()...).

@@ -10,6 +10,7 @@ import (
 )
 
 type UpdateQueryBuilder struct {
+	*queryRecover
 	session     *Session
 	ctx         context.Context
 	table       string
@@ -20,15 +21,17 @@ type UpdateQueryBuilder struct {
 
 func newUpdateQueryBuilder(ctx context.Context, session *Session) *UpdateQueryBuilder {
 	return &UpdateQueryBuilder{
-		session:     session,
-		consistency: session.consistency,
-		ctx:         ctx,
-		args:        []argument{},
-		fields:      []argument{},
+		queryRecover: recoverer(),
+		session:      session,
+		consistency:  session.consistency,
+		ctx:          ctx,
+		args:         []argument{},
+		fields:       []argument{},
 	}
 }
 
 func (qb *UpdateQueryBuilder) Set(a any) *UpdateQueryBuilder {
+	defer qb.recover()
 	if qb.table == "" {
 		qb.table = getTableName(a)
 	}
@@ -38,6 +41,7 @@ func (qb *UpdateQueryBuilder) Set(a any) *UpdateQueryBuilder {
 }
 
 func (qb *UpdateQueryBuilder) bind(o op, a any) *UpdateQueryBuilder {
+	defer qb.recover()
 	if qb.table == "" {
 		qb.table = getTableName(a)
 	}
@@ -116,6 +120,10 @@ func (qb *UpdateQueryBuilder) getArgs() []any {
 }
 
 func (qb *UpdateQueryBuilder) Exec() error {
+	if qb.err != nil {
+		return qb.err
+	}
+
 	return errors.WithStack(qb.session.
 		Query(qb.getQuery()).
 		Bind(qb.getArgs()...).

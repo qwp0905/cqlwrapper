@@ -10,6 +10,7 @@ import (
 )
 
 type DeleteQueryBuilder struct {
+	*queryRecover
 	session     *Session
 	ctx         context.Context
 	consistency gocql.Consistency
@@ -19,10 +20,11 @@ type DeleteQueryBuilder struct {
 
 func newDeleteQueryBuilder(ctx context.Context, session *Session) *DeleteQueryBuilder {
 	return &DeleteQueryBuilder{
-		session:     session,
-		consistency: session.consistency,
-		ctx:         ctx,
-		args:        []argument{},
+		queryRecover: recoverer(),
+		session:      session,
+		consistency:  session.consistency,
+		ctx:          ctx,
+		args:         []argument{},
 	}
 }
 
@@ -42,6 +44,7 @@ func (qb *DeleteQueryBuilder) Consistency(co gocql.Consistency) *DeleteQueryBuil
 }
 
 func (qb *DeleteQueryBuilder) Where(a any) *DeleteQueryBuilder {
+	defer qb.recover()
 	if qb.from == "" {
 		qb.from = getTableName(a)
 	}
@@ -71,6 +74,9 @@ func (qb *DeleteQueryBuilder) getQuery() string {
 }
 
 func (qb *DeleteQueryBuilder) Exec() error {
+	if qb.err != nil {
+		return qb.err
+	}
 	return errors.WithStack(qb.session.
 		Query(qb.getQuery()).
 		Bind(qb.getArgs()...).

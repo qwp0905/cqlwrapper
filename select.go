@@ -10,6 +10,7 @@ import (
 )
 
 type SelectQueryBuilder struct {
+	*queryRecover
 	session        *Session
 	ctx            context.Context
 	allowFiltering bool
@@ -24,15 +25,17 @@ type SelectQueryBuilder struct {
 
 func newSelectQueryBuilder(ctx context.Context, session *Session) *SelectQueryBuilder {
 	return &SelectQueryBuilder{
-		session:     session,
-		consistency: session.consistency,
-		ctx:         ctx,
-		fields:      []string{},
-		args:        []argument{},
+		queryRecover: recoverer(),
+		session:      session,
+		consistency:  session.consistency,
+		ctx:          ctx,
+		fields:       []string{},
+		args:         []argument{},
 	}
 }
 
 func (qb *SelectQueryBuilder) From(a any) *SelectQueryBuilder {
+	defer qb.recover()
 	if table, ok := a.(string); ok {
 		qb.from = table
 		return qb
@@ -66,6 +69,7 @@ func (qb *SelectQueryBuilder) Limit(l int) *SelectQueryBuilder {
 }
 
 func (qb *SelectQueryBuilder) bind(o op, a any) *SelectQueryBuilder {
+	defer qb.recover()
 	if qb.from == "" {
 		qb = qb.From(a)
 	}
@@ -146,6 +150,10 @@ func (qb *SelectQueryBuilder) do() *gocql.Iter {
 }
 
 func (qb *SelectQueryBuilder) First(s any) error {
+	if qb.err != nil {
+		return qb.err
+	}
+
 	qb = qb.Limit(1)
 	if len(qb.fields) == 0 {
 		qb = qb.From(s)
@@ -167,6 +175,9 @@ func (qb *SelectQueryBuilder) First(s any) error {
 }
 
 func (qb *SelectQueryBuilder) Count() (int, error) {
+	if qb.err != nil {
+		return 0, qb.err
+	}
 	iter := qb.do()
 	count := iter.NumRows()
 	if err := iter.Close(); err != nil {
@@ -177,7 +188,7 @@ func (qb *SelectQueryBuilder) Count() (int, error) {
 
 func (qb *SelectQueryBuilder) Scanner() *Scanner {
 	iter := qb.do()
-	return &Scanner{iter: iter, rows: []any{}, err: nil}
+	return &Scanner{iter: iter, rows: []any{}, err: qb.err}
 }
 
 type Scanner struct {
