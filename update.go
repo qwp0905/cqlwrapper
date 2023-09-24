@@ -70,8 +70,13 @@ func (qb *UpdateQueryBuilder) WhereLte(a any) *UpdateQueryBuilder {
 	return qb.bind(opLte, a)
 }
 
-func (qb *UpdateQueryBuilder) WhereIn(a any) *UpdateQueryBuilder {
-	return qb.bind(opIn, a)
+func (qb *UpdateQueryBuilder) WhereIn(field string, args ...any) *UpdateQueryBuilder {
+	qb.args = append(qb.args, argument{
+		field:    field,
+		operator: opIn,
+		arg:      args,
+	})
+	return qb
 }
 
 func (qb *UpdateQueryBuilder) getQuery() string {
