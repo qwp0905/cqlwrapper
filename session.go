@@ -19,7 +19,10 @@ func New(cluster *gocql.ClusterConfig) (*Session, error) {
 		return nil, errors.WithStack(err)
 	}
 
-	return &Session{Session: session, consistency: cluster.Consistency}, nil
+	return &Session{
+		Session:     session,
+		consistency: cluster.Consistency,
+	}, nil
 }
 
 func (s *Session) SelectWithContext(ctx context.Context) *SelectQueryBuilder {

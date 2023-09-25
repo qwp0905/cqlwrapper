@@ -149,29 +149,71 @@ func (qb *SelectQueryBuilder) do() *gocql.Iter {
 		Iter()
 }
 
-func (qb *SelectQueryBuilder) First(s any) error {
-	if err := qb.error(); err != nil {
-		return err
+func (qb *SelectQueryBuilder) First(s any) (err error) {
+	defer func() {
+		if e, ok := recover().(error); ok && e != nil {
+			err = e
+			return
+		}
+	}()
+	if err = qb.error(); err != nil {
+		return
 	}
 
-	qb = qb.Limit(1)
+	if len(qb.fields) == 0 {
+		qb = qb.From(s)
+	}
+
+	iter := qb.Limit(1).do()
+	defer iter.Close()
+
+	var rd gocql.RowData
+	rd, err = iter.RowData()
+	if err != nil {
+		err = errors.WithStack(err)
+		return
+	}
+	if !iter.Scan(rd.Values...) {
+		err = errors.WithStack(gocql.ErrNotFound)
+		return
+	}
+
+	return assignValues(s, rd.Values)
+}
+
+func (qb *SelectQueryBuilder) All(s any) (err error) {
+	defer func() {
+		if e, ok := recover().(error); ok && e != nil {
+			err = e
+			return
+		}
+	}()
+	if err = qb.error(); err != nil {
+		return
+	}
+
 	if len(qb.fields) == 0 {
 		qb = qb.From(s)
 	}
 
 	iter := qb.do()
 	defer iter.Close()
-	iter.Scanner()
 
-	rd, err := iter.RowData()
-	if err != nil {
-		return errors.WithStack(err)
-	}
-	if !iter.Scan(rd.Values...) {
-		return errors.WithStack(gocql.ErrNotFound)
+	for {
+		var rd gocql.RowData
+		rd, err = iter.RowData()
+		if err != nil {
+			return errors.WithStack(err)
+		}
+		if !iter.Scan(rd.Values...) {
+			break
+		}
+		if err = appendValues(s, rd.Values); err != nil {
+			return
+		}
 	}
 
-	return assignValues(s, rd.Values)
+	return
 }
 
 func (qb *SelectQueryBuilder) Count() (int, error) {
@@ -216,7 +258,13 @@ func (s *Scanner) Next() bool {
 	return true
 }
 
-func (s *Scanner) Scan(a any) error {
+func (s *Scanner) Scan(a any) (err error) {
+	defer func() {
+		if e, ok := recover().(error); ok && e != nil {
+			err = e
+			return
+		}
+	}()
 	if s.err != nil {
 		return s.err
 	}
@@ -225,5 +273,8 @@ func (s *Scanner) Scan(a any) error {
 }
 
 func (s *Scanner) Err() error {
+	if s.err != nil {
+		return s.err
+	}
 	return s.iter.Close()
 }
