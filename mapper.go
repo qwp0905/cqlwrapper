@@ -45,7 +45,15 @@ func getTableName(a any) string {
 		return table.TableName()
 	}
 
-	return camelToSnake(getSourceType(a).Name())
+	t := getSourceType(a)
+	m, ok := reflect.PointerTo(t).MethodByName("TableName")
+	if !ok {
+		return camelToSnake(t.Name())
+	}
+
+	var name string
+	reflect.ValueOf(&name).Elem().Set(m.Func.Call([]reflect.Value{reflect.New(t)})[0])
+	return name
 }
 
 func getFieldName(t *reflect.StructField) string {
