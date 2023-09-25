@@ -113,8 +113,8 @@ func appendValues(a any, values []any) error {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	v.Grow(v.Cap() + 1)
-	v.SetLen(v.Cap())
+	v.Grow(1)
+	v.SetLen(v.Len() + 1)
 	el := reflect.Indirect(reflect.New(t))
 	for i := 0; i < t.NumField(); i++ {
 		cv := el.Field(i)
