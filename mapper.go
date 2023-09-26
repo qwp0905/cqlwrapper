@@ -1,7 +1,6 @@
 package cqlwrapper
 
 import (
-	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
@@ -86,19 +85,18 @@ func iterateTypes(a any, f func(t *reflect.StructField, i int)) {
 }
 
 func assignValues(a any, fields []string, values []any) error {
-	m := map[string]any{}
+	m := map[string]reflect.Value{}
 	for i, e := range fields {
-		m[e] = values[i]
+		m[e] = reflect.Indirect(reflect.ValueOf(values[i]))
 	}
 	return iterateTypeAndValues(a, func(t *reflect.StructField, v *reflect.Value, i int) error {
-		mv, ok := m[getFieldName(t)]
+		value, ok := m[getFieldName(t)]
 		if !ok {
 			return nil
 		}
 		if !v.CanSet() {
 			return errors.Errorf("cannot assign on field %s", t.Name)
 		}
-		value := reflect.Indirect(reflect.ValueOf(mv))
 		if !value.CanConvert(t.Type) {
 			return errors.Errorf("cannot convert %s to %s", value.Type().Name(), t.Type.Name())
 		}
@@ -108,9 +106,9 @@ func assignValues(a any, fields []string, values []any) error {
 }
 
 func appendValues(a any, fields []string, values []any) error {
-	m := map[string]any{}
+	m := map[string]reflect.Value{}
 	for i, e := range fields {
-		m[e] = values[i]
+		m[e] = reflect.Indirect(reflect.ValueOf(values[i]))
 	}
 	t, v := getTypeAndValue(a)
 	if t.Kind() != reflect.Slice {
@@ -130,7 +128,7 @@ func appendValues(a any, fields []string, values []any) error {
 	el := reflect.Indirect(reflect.New(t))
 	for i := 0; i < t.NumField(); i++ {
 		ct := t.Field(i)
-		mv, ok := m[getFieldName(&ct)]
+		value, ok := m[getFieldName(&ct)]
 		if !ok {
 			continue
 		}
@@ -138,7 +136,6 @@ func appendValues(a any, fields []string, values []any) error {
 		if !cv.CanSet() {
 			return errors.Errorf("cannot assign on field %s", t.Field(i).Name)
 		}
-		value := reflect.Indirect(reflect.ValueOf(mv))
 		if !value.CanConvert(ct.Type) {
 			return errors.Errorf("cannot convert %s to %s", value.Type().Name(), t.Field(i).Type.Name())
 		}
@@ -169,7 +166,7 @@ func mappingArgs(o op, a any) []argument {
 func mappingFields(a any) []string {
 	fields := []string{}
 	iterateTypes(a, func(t *reflect.StructField, i int) {
-		fields = append(fields, fmt.Sprintf(`"%s"`, getFieldName(t)))
+		fields = append(fields, getFieldName(t))
 	})
 
 	return fields

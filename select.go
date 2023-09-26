@@ -114,6 +114,14 @@ func (qb *SelectQueryBuilder) WhereIn(field string, args any) *SelectQueryBuilde
 	return qb
 }
 
+func (qb *SelectQueryBuilder) getFields() string {
+	out := []string{}
+	for _, field := range qb.fields {
+		out = append(out, fmt.Sprintf(`"%s"`, field))
+	}
+	return strings.Join(out, ",")
+}
+
 func (qb *SelectQueryBuilder) getArgs() []any {
 	out := []any{}
 	for _, arg := range qb.args {
@@ -123,11 +131,7 @@ func (qb *SelectQueryBuilder) getArgs() []any {
 }
 
 func (qb *SelectQueryBuilder) getQuery() string {
-	query := fmt.Sprintf(
-		`SELECT %s FROM %s`,
-		strings.Join(qb.fields, ","),
-		qb.from,
-	)
+	query := fmt.Sprintf(`SELECT %s FROM %s`, qb.getFields(), qb.from)
 	if len(qb.args) > 0 {
 		where := []string{}
 		for _, arg := range qb.args {
