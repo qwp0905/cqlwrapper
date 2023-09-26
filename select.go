@@ -34,6 +34,11 @@ func newSelectQueryBuilder(ctx context.Context, session *Session) *SelectQueryBu
 	}
 }
 
+func (qb *SelectQueryBuilder) Columns(fields ...string) *SelectQueryBuilder {
+	qb.fields = fields
+	return qb
+}
+
 func (qb *SelectQueryBuilder) From(a any) *SelectQueryBuilder {
 	defer qb.recover()
 	if table, ok := a.(string); ok {
@@ -42,7 +47,10 @@ func (qb *SelectQueryBuilder) From(a any) *SelectQueryBuilder {
 	}
 
 	qb.from = getTableName(a)
-	qb.fields = mappingFields(a)
+
+	if len(qb.fields) == 0 {
+		qb.fields = mappingFields(a)
+	}
 
 	return qb
 }
@@ -70,7 +78,7 @@ func (qb *SelectQueryBuilder) Limit(l int) *SelectQueryBuilder {
 
 func (qb *SelectQueryBuilder) bind(o op, a any) *SelectQueryBuilder {
 	defer qb.recover()
-	if qb.from == "" {
+	if !qb.isPrepared() {
 		qb = qb.From(a)
 	}
 	qb.args = mappingArgs(o, a)
@@ -140,7 +148,11 @@ func (qb *SelectQueryBuilder) getQuery() string {
 	return query
 }
 
-func (qb *SelectQueryBuilder) do() *gocql.Iter {
+func (qb *SelectQueryBuilder) isPrepared() bool {
+	return qb.from != "" && len(qb.fields) != 0
+}
+
+func (qb *SelectQueryBuilder) iter() *gocql.Iter {
 	return qb.session.
 		Query(qb.getQuery()).
 		WithContext(qb.ctx).
@@ -160,11 +172,11 @@ func (qb *SelectQueryBuilder) First(s any) (err error) {
 		return
 	}
 
-	if len(qb.fields) == 0 {
+	if !qb.isPrepared() {
 		qb = qb.From(s)
 	}
 
-	iter := qb.Limit(1).do()
+	iter := qb.Limit(1).iter()
 	defer iter.Close()
 
 	var rd gocql.RowData
@@ -178,7 +190,7 @@ func (qb *SelectQueryBuilder) First(s any) (err error) {
 		return
 	}
 
-	return assignValues(s, rd.Values)
+	return assignValues(s, qb.fields, rd.Values)
 }
 
 func (qb *SelectQueryBuilder) All(s any) (err error) {
@@ -192,11 +204,11 @@ func (qb *SelectQueryBuilder) All(s any) (err error) {
 		return
 	}
 
-	if len(qb.fields) == 0 {
+	if !qb.isPrepared() {
 		qb = qb.From(s)
 	}
 
-	iter := qb.do()
+	iter := qb.iter()
 	defer iter.Close()
 
 	for {
@@ -208,7 +220,7 @@ func (qb *SelectQueryBuilder) All(s any) (err error) {
 		if !iter.Scan(rd.Values...) {
 			break
 		}
-		if err = appendValues(s, rd.Values); err != nil {
+		if err = appendValues(s, qb.fields, rd.Values); err != nil {
 			return
 		}
 	}
@@ -220,26 +232,24 @@ func (qb *SelectQueryBuilder) Count() (int, error) {
 	if err := qb.error(); err != nil {
 		return 0, err
 	}
-	iter := qb.do()
-	count := iter.NumRows()
-	if err := iter.Close(); err != nil {
-		return 0, errors.WithStack(err)
-	}
-	return count, nil
+	iter := qb.iter()
+	defer iter.Close()
+	return iter.NumRows(), nil
 }
 
 func (qb *SelectQueryBuilder) Scanner() *Scanner {
 	if err := qb.error(); err != nil {
 		return &Scanner{iter: nil, err: err}
 	}
-	iter := qb.do()
-	return &Scanner{iter: iter, rows: []any{}, err: nil}
+	iter := qb.iter()
+	return &Scanner{iter: iter, fields: qb.fields, rows: []any{}, err: nil}
 }
 
 type Scanner struct {
-	rows []any
-	iter *gocql.Iter
-	err  error
+	rows   []any
+	fields []string
+	iter   *gocql.Iter
+	err    error
 }
 
 func (s *Scanner) Next() bool {
@@ -269,7 +279,7 @@ func (s *Scanner) Scan(a any) (err error) {
 		return s.err
 	}
 
-	return assignValues(a, s.rows)
+	return assignValues(a, s.fields, s.rows)
 }
 
 func (s *Scanner) Err() error {
