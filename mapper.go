@@ -86,14 +86,19 @@ func iterateTypes(a any, f func(t *reflect.StructField, i int)) {
 }
 
 func assignValues(a any, fields []string, values []any) error {
+	m := map[string]any{}
+	for i, e := range fields {
+		m[e] = values[i]
+	}
 	return iterateTypeAndValues(a, func(t *reflect.StructField, v *reflect.Value, i int) error {
-		if fields[i] != getFieldName(t) {
+		mv, ok := m[getFieldName(t)]
+		if !ok {
 			return nil
 		}
 		if !v.CanSet() {
 			return errors.Errorf("cannot assign on field %s", t.Name)
 		}
-		value := reflect.Indirect(reflect.ValueOf(values[i]))
+		value := reflect.Indirect(reflect.ValueOf(mv))
 		if !value.CanConvert(t.Type) {
 			return errors.Errorf("cannot convert %s to %s", value.Type().Name(), t.Type.Name())
 		}
@@ -103,6 +108,10 @@ func assignValues(a any, fields []string, values []any) error {
 }
 
 func appendValues(a any, fields []string, values []any) error {
+	m := map[string]any{}
+	for i, e := range fields {
+		m[e] = values[i]
+	}
 	t, v := getTypeAndValue(a)
 	if t.Kind() != reflect.Slice {
 		return errors.Errorf("cannot append to %s", t)
@@ -121,14 +130,15 @@ func appendValues(a any, fields []string, values []any) error {
 	el := reflect.Indirect(reflect.New(t))
 	for i := 0; i < t.NumField(); i++ {
 		ct := t.Field(i)
-		if getFieldName(&ct) != fields[i] {
+		mv, ok := m[getFieldName(&ct)]
+		if !ok {
 			continue
 		}
 		cv := el.Field(i)
 		if !cv.CanSet() {
 			return errors.Errorf("cannot assign on field %s", t.Field(i).Name)
 		}
-		value := reflect.Indirect(reflect.ValueOf(values[i]))
+		value := reflect.Indirect(reflect.ValueOf(mv))
 		if !value.CanConvert(ct.Type) {
 			return errors.Errorf("cannot convert %s to %s", value.Type().Name(), t.Field(i).Type.Name())
 		}
