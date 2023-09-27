@@ -81,7 +81,8 @@ func (qb *SelectQueryBuilder) bind(o op, a any) *SelectQueryBuilder {
 	if !qb.isPrepared() {
 		qb = qb.From(a)
 	}
-	qb.args = mappingArgs(o, a)
+
+	qb.args = append(qb.args, mappingArgs(o, a)...)
 	return qb
 }
 
@@ -165,7 +166,7 @@ func (qb *SelectQueryBuilder) iter() *gocql.Iter {
 		Iter()
 }
 
-func (qb *SelectQueryBuilder) First(s any) (err error) {
+func (qb *SelectQueryBuilder) One(s any) (err error) {
 	defer func() {
 		if e, ok := recover().(error); ok && e != nil {
 			err = e

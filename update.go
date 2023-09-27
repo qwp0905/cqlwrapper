@@ -45,7 +45,7 @@ func (qb *UpdateQueryBuilder) bind(o op, a any) *UpdateQueryBuilder {
 	if qb.table == "" {
 		qb.table = getTableName(a)
 	}
-	qb.args = mappingArgs(o, a)
+	qb.args = append(qb.args, mappingArgs(o, a)...)
 	return qb
 }
 
