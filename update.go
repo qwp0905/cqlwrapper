@@ -7,16 +7,17 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/qwp0905/cqlwrapper/internal/mapper"
 )
 
 type UpdateQueryBuilder struct {
 	*queryRecover
 	session     *Session
 	ctx         context.Context
-	table       string
+	model       *mapper.Mapper
 	consistency gocql.Consistency
-	args        []argument
-	fields      []argument
+	args        []*mapper.Argument
+	fields      []*mapper.Argument
 }
 
 func newUpdateQueryBuilder(ctx context.Context, session *Session) *UpdateQueryBuilder {
@@ -25,27 +26,28 @@ func newUpdateQueryBuilder(ctx context.Context, session *Session) *UpdateQueryBu
 		session:      session,
 		consistency:  session.consistency,
 		ctx:          ctx,
-		args:         []argument{},
-		fields:       []argument{},
+		args:         []*mapper.Argument{},
+		fields:       []*mapper.Argument{},
+		model:        nil,
 	}
 }
 
 func (qb *UpdateQueryBuilder) Set(a any) *UpdateQueryBuilder {
 	defer qb.recover()
-	if qb.table == "" {
-		qb.table = getTableName(a)
+	if qb.model == nil {
+		qb.model = mapper.New(a)
 	}
-	qb.args = mappingValuesWithSkip(a)
+	qb.args = qb.model.MappingValuesWithSkip(a)
 
 	return qb
 }
 
-func (qb *UpdateQueryBuilder) bind(o op, a any) *UpdateQueryBuilder {
+func (qb *UpdateQueryBuilder) bind(o mapper.Operator, a any) *UpdateQueryBuilder {
 	defer qb.recover()
-	if qb.table == "" {
-		qb.table = getTableName(a)
+	if qb.model == nil {
+		qb.model = mapper.New(a)
 	}
-	qb.args = append(qb.args, mappingArgs(o, a)...)
+	qb.args = append(qb.args, qb.model.MappingArgs(o, a)...)
 	return qb
 }
 
@@ -55,52 +57,46 @@ func (qb *UpdateQueryBuilder) Consistency(co gocql.Consistency) *UpdateQueryBuil
 }
 
 func (qb *UpdateQueryBuilder) Where(a any) *UpdateQueryBuilder {
-	return qb.bind(opEq, a)
+	return qb.bind(mapper.OpEq, a)
 }
 
 func (qb *UpdateQueryBuilder) WhereGt(a any) *UpdateQueryBuilder {
-	return qb.bind(opGt, a)
+	return qb.bind(mapper.OpGt, a)
 }
 
 func (qb *UpdateQueryBuilder) WhereGte(a any) *UpdateQueryBuilder {
-	return qb.bind(opGte, a)
+	return qb.bind(mapper.OpGte, a)
 }
 
 func (qb *UpdateQueryBuilder) WhereLt(a any) *UpdateQueryBuilder {
-	return qb.bind(opLt, a)
+	return qb.bind(mapper.OpLt, a)
 }
 
 func (qb *UpdateQueryBuilder) WhereLte(a any) *UpdateQueryBuilder {
-	return qb.bind(opLte, a)
+	return qb.bind(mapper.OpLte, a)
 }
 
 func (qb *UpdateQueryBuilder) WhereIn(field string, args any) *UpdateQueryBuilder {
-	qb.args = append(qb.args, argument{
-		field:    field,
-		operator: opIn,
-		arg:      args,
-	})
+	qb.args = append(qb.args, mapper.NewArg(field, mapper.OpIn, args))
 	return qb
 }
 
 func (qb *UpdateQueryBuilder) getQuery() string {
 	fields := []string{}
-	vars := []string{}
 	for _, field := range qb.fields {
-		fields = append(fields, field.getField())
-		vars = append(vars, "?")
+		fields = append(fields, field.GetField())
 	}
 	query := fmt.Sprintf(
 		`UPDATE %s (%s) VALUES (%s)`,
-		qb.table,
+		qb.model.GetTable(),
 		strings.Join(fields, ","),
-		strings.Join(vars, ","),
+		questionMarks(len(fields)),
 	)
 
 	if len(qb.args) > 0 {
 		where := []string{}
 		for _, arg := range qb.args {
-			where = append(where, arg.query())
+			where = append(where, arg.Query())
 		}
 		query += fmt.Sprintf(` WHERE %s`, strings.Join(where, " AND "))
 	}
@@ -111,10 +107,10 @@ func (qb *UpdateQueryBuilder) getQuery() string {
 func (qb *UpdateQueryBuilder) getArgs() []any {
 	out := []any{}
 	for _, field := range qb.fields {
-		out = append(out, field.arg)
+		out = append(out, field.GetArg())
 	}
 	for _, arg := range qb.args {
-		out = append(out, arg.arg)
+		out = append(out, arg.GetArg())
 	}
 	return out
 }

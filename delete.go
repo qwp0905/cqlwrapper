@@ -7,6 +7,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/qwp0905/cqlwrapper/internal/mapper"
 )
 
 type DeleteQueryBuilder struct {
@@ -14,8 +15,8 @@ type DeleteQueryBuilder struct {
 	session     *Session
 	ctx         context.Context
 	consistency gocql.Consistency
-	args        []argument
-	from        string
+	args        []*mapper.Argument
+	model       *mapper.Mapper
 }
 
 func newDeleteQueryBuilder(ctx context.Context, session *Session) *DeleteQueryBuilder {
@@ -24,31 +25,28 @@ func newDeleteQueryBuilder(ctx context.Context, session *Session) *DeleteQueryBu
 		session:      session,
 		consistency:  session.consistency,
 		ctx:          ctx,
-		args:         []argument{},
+		args:         []*mapper.Argument{},
+		model:        nil,
 	}
 }
 
 func (qb *DeleteQueryBuilder) From(a any) *DeleteQueryBuilder {
-	if table, ok := a.(string); ok {
-		qb.from = table
-		return qb
-	}
-
-	qb.from = getTableName(a)
+	qb.model = mapper.New(a)
 	return qb
 }
 
 func (qb *DeleteQueryBuilder) Consistency(co gocql.Consistency) *DeleteQueryBuilder {
+	defer qb.recover()
 	qb.consistency = co
 	return qb
 }
 
 func (qb *DeleteQueryBuilder) Where(a any) *DeleteQueryBuilder {
 	defer qb.recover()
-	if qb.from == "" {
-		qb.from = getTableName(a)
+	if qb.model == nil {
+		qb = qb.From(a)
 	}
-	qb.args = mappingArgs(opEq, a)
+	qb.args = qb.model.MappingArgs(mapper.OpEq, a)
 
 	return qb
 }
@@ -56,7 +54,7 @@ func (qb *DeleteQueryBuilder) Where(a any) *DeleteQueryBuilder {
 func (qb *DeleteQueryBuilder) getArgs() []any {
 	out := []any{}
 	for _, arg := range qb.args {
-		out = append(out, arg.arg)
+		out = append(out, arg.GetArg())
 	}
 	return out
 }
@@ -64,11 +62,11 @@ func (qb *DeleteQueryBuilder) getArgs() []any {
 func (qb *DeleteQueryBuilder) getQuery() string {
 	where := []string{}
 	for _, arg := range qb.args {
-		where = append(where, arg.query())
+		where = append(where, arg.Query())
 	}
 	return fmt.Sprintf(
 		`DELETE FROM %s WHERE %s`,
-		qb.from,
+		qb.model.GetTable(),
 		strings.Join(where, " AND "),
 	)
 }

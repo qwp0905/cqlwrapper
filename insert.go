@@ -7,6 +7,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/qwp0905/cqlwrapper/internal/mapper"
 )
 
 type InsertQueryBuilder struct {
@@ -15,8 +16,8 @@ type InsertQueryBuilder struct {
 	ctx         context.Context
 	consistency gocql.Consistency
 	ifNotExists bool
-	args        []argument
-	into        string
+	args        []*mapper.Argument
+	model       *mapper.Mapper
 }
 
 func newInsertQueryBuilder(ctx context.Context, session *Session) *InsertQueryBuilder {
@@ -26,7 +27,8 @@ func newInsertQueryBuilder(ctx context.Context, session *Session) *InsertQueryBu
 		consistency:  session.consistency,
 		session:      session,
 		ifNotExists:  false,
-		args:         []argument{},
+		args:         []*mapper.Argument{},
+		model:        nil,
 	}
 }
 
@@ -42,25 +44,23 @@ func (qb *InsertQueryBuilder) IfNotExists() *InsertQueryBuilder {
 
 func (qb *InsertQueryBuilder) Values(a any) *InsertQueryBuilder {
 	defer qb.recover()
-	if qb.into == "" {
-		qb.into = getTableName(a)
+	if qb.model == nil {
+		qb.model = mapper.New(a)
 	}
-	qb.args = mappingValues(a)
+	qb.args = qb.model.MappingValues(a)
 	return qb
 }
 
 func (qb *InsertQueryBuilder) getQuery() string {
 	fields := []string{}
-	questionMarks := []string{}
 	for _, arg := range qb.args {
-		fields = append(fields, arg.getField())
-		questionMarks = append(questionMarks, "?")
+		fields = append(fields, arg.GetField())
 	}
 	query := fmt.Sprintf(
 		`INSERT INTO %s (%s) VALUES (%s)`,
-		qb.into,
+		qb.model.GetTable(),
 		strings.Join(fields, ","),
-		strings.Join(questionMarks, ","),
+		questionMarks(len(fields)),
 	)
 
 	if qb.ifNotExists {
@@ -73,7 +73,7 @@ func (qb *InsertQueryBuilder) getQuery() string {
 func (qb *InsertQueryBuilder) getArgs() []any {
 	out := []any{}
 	for _, arg := range qb.args {
-		out = append(out, arg.arg)
+		out = append(out, arg.GetArg())
 	}
 	return out
 }

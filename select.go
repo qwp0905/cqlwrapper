@@ -7,6 +7,7 @@ import (
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
+	"github.com/qwp0905/cqlwrapper/internal/mapper"
 )
 
 type SelectQueryBuilder struct {
@@ -14,13 +15,13 @@ type SelectQueryBuilder struct {
 	session        *Session
 	ctx            context.Context
 	allowFiltering bool
-	from           string
 	fields         []string
-	args           []argument
+	args           []*mapper.Argument
 	limit          int
 	orderWith      string
 	sort           sort
 	consistency    gocql.Consistency
+	model          *mapper.Mapper
 }
 
 func newSelectQueryBuilder(ctx context.Context, session *Session) *SelectQueryBuilder {
@@ -30,7 +31,8 @@ func newSelectQueryBuilder(ctx context.Context, session *Session) *SelectQueryBu
 		consistency:  session.consistency,
 		ctx:          ctx,
 		fields:       []string{},
-		args:         []argument{},
+		args:         []*mapper.Argument{},
+		model:        nil,
 	}
 }
 
@@ -41,16 +43,7 @@ func (qb *SelectQueryBuilder) Columns(fields ...string) *SelectQueryBuilder {
 
 func (qb *SelectQueryBuilder) From(a any) *SelectQueryBuilder {
 	defer qb.recover()
-	if table, ok := a.(string); ok {
-		qb.from = table
-		return qb
-	}
-
-	qb.from = getTableName(a)
-
-	if len(qb.fields) == 0 {
-		qb.fields = mappingFields(a)
-	}
+	qb.model = mapper.New(a)
 
 	return qb
 }
@@ -76,46 +69,46 @@ func (qb *SelectQueryBuilder) Limit(l int) *SelectQueryBuilder {
 	return qb
 }
 
-func (qb *SelectQueryBuilder) bind(o op, a any) *SelectQueryBuilder {
+func (qb *SelectQueryBuilder) bind(o mapper.Operator, a any) *SelectQueryBuilder {
 	defer qb.recover()
 	if !qb.isPrepared() {
 		qb = qb.From(a)
 	}
 
-	qb.args = append(qb.args, mappingArgs(o, a)...)
+	qb.args = append(qb.args, qb.model.MappingArgs(o, a)...)
 	return qb
 }
 
 func (qb *SelectQueryBuilder) Where(a any) *SelectQueryBuilder {
-	return qb.bind(opEq, a)
+	return qb.bind(mapper.OpEq, a)
 }
 
 func (qb *SelectQueryBuilder) WhereGt(a any) *SelectQueryBuilder {
-	return qb.bind(opGt, a)
+	return qb.bind(mapper.OpGt, a)
 }
 
 func (qb *SelectQueryBuilder) WhereGte(a any) *SelectQueryBuilder {
-	return qb.bind(opGte, a)
+	return qb.bind(mapper.OpGte, a)
 }
 
 func (qb *SelectQueryBuilder) WhereLt(a any) *SelectQueryBuilder {
-	return qb.bind(opLt, a)
+	return qb.bind(mapper.OpLt, a)
 }
 
 func (qb *SelectQueryBuilder) WhereLte(a any) *SelectQueryBuilder {
-	return qb.bind(opLte, a)
+	return qb.bind(mapper.OpLte, a)
 }
 
 func (qb *SelectQueryBuilder) WhereIn(field string, args any) *SelectQueryBuilder {
-	qb.args = append(qb.args, argument{
-		field:    field,
-		operator: opIn,
-		arg:      args,
-	})
+	qb.args = append(qb.args, mapper.NewArg(field, mapper.OpIn, args))
 	return qb
 }
 
 func (qb *SelectQueryBuilder) getFields() string {
+	if len(qb.fields) == 0 {
+		qb.fields = qb.model.GetFields()
+	}
+
 	out := []string{}
 	for _, field := range qb.fields {
 		out = append(out, fmt.Sprintf(`"%s"`, field))
@@ -126,17 +119,17 @@ func (qb *SelectQueryBuilder) getFields() string {
 func (qb *SelectQueryBuilder) getArgs() []any {
 	out := []any{}
 	for _, arg := range qb.args {
-		out = append(out, arg.arg)
+		out = append(out, arg.GetArg())
 	}
 	return out
 }
 
 func (qb *SelectQueryBuilder) getQuery() string {
-	query := fmt.Sprintf(`SELECT %s FROM %s`, qb.getFields(), qb.from)
+	query := fmt.Sprintf(`SELECT %s FROM %s`, qb.getFields(), qb.model.GetTable())
 	if len(qb.args) > 0 {
 		where := []string{}
 		for _, arg := range qb.args {
-			where = append(where, arg.query())
+			where = append(where, arg.Query())
 		}
 		query += fmt.Sprintf(" WHERE %s", strings.Join(where, " AND "))
 	}
@@ -154,7 +147,7 @@ func (qb *SelectQueryBuilder) getQuery() string {
 }
 
 func (qb *SelectQueryBuilder) isPrepared() bool {
-	return qb.from != "" && len(qb.fields) != 0
+	return qb.model != nil
 }
 
 func (qb *SelectQueryBuilder) iter() *gocql.Iter {
@@ -167,18 +160,12 @@ func (qb *SelectQueryBuilder) iter() *gocql.Iter {
 }
 
 func (qb *SelectQueryBuilder) One(s any) (err error) {
-	defer func() {
-		if e, ok := recover().(error); ok && e != nil {
-			err = e
-			return
-		}
-	}()
-	if err = qb.error(); err != nil {
-		return
-	}
-
 	if !qb.isPrepared() {
 		qb = qb.From(s)
+	}
+
+	if err = qb.error(); err != nil {
+		return err
 	}
 
 	iter := qb.Limit(1).iter()
@@ -187,30 +174,22 @@ func (qb *SelectQueryBuilder) One(s any) (err error) {
 	var rd gocql.RowData
 	rd, err = iter.RowData()
 	if err != nil {
-		err = errors.WithStack(err)
-		return
+		return errors.WithStack(err)
 	}
 	if !iter.Scan(rd.Values...) {
-		err = errors.WithStack(gocql.ErrNotFound)
-		return
+		return errors.WithStack(gocql.ErrNotFound)
 	}
 
-	return assignValues(s, qb.fields, rd.Values)
+	return qb.model.AssignValues(s, qb.fields, rd.Values)
 }
 
 func (qb *SelectQueryBuilder) All(s any) (err error) {
-	defer func() {
-		if e, ok := recover().(error); ok && e != nil {
-			err = e
-			return
-		}
-	}()
-	if err = qb.error(); err != nil {
-		return
-	}
-
 	if !qb.isPrepared() {
 		qb = qb.From(s)
+	}
+
+	if err = qb.error(); err != nil {
+		return err
 	}
 
 	iter := qb.iter()
@@ -225,12 +204,12 @@ func (qb *SelectQueryBuilder) All(s any) (err error) {
 		if !iter.Scan(rd.Values...) {
 			break
 		}
-		if err = appendValues(s, qb.fields, rd.Values); err != nil {
-			return
+		if err = qb.model.AppendValues(s, qb.fields, rd.Values); err != nil {
+			return err
 		}
 	}
 
-	return
+	return nil
 }
 
 func (qb *SelectQueryBuilder) Count() (int, error) {
@@ -246,8 +225,17 @@ func (qb *SelectQueryBuilder) Scanner() *Scanner {
 	if err := qb.error(); err != nil {
 		return &Scanner{iter: nil, err: err}
 	}
-	iter := qb.iter()
-	return &Scanner{iter: iter, fields: qb.fields, rows: []any{}, err: nil}
+	if qb.model == nil {
+		return &Scanner{err: errors.New("model not defined")}
+	}
+
+	return &Scanner{
+		iter:   qb.iter(),
+		fields: qb.fields,
+		model:  qb.model,
+		rows:   []any{},
+		err:    nil,
+	}
 }
 
 type Scanner struct {
@@ -255,6 +243,7 @@ type Scanner struct {
 	fields []string
 	iter   *gocql.Iter
 	err    error
+	model  *mapper.Mapper
 }
 
 func (s *Scanner) Next() bool {
@@ -274,17 +263,11 @@ func (s *Scanner) Next() bool {
 }
 
 func (s *Scanner) Scan(a any) (err error) {
-	defer func() {
-		if e, ok := recover().(error); ok && e != nil {
-			err = e
-			return
-		}
-	}()
 	if s.err != nil {
 		return s.err
 	}
 
-	return assignValues(a, s.fields, s.rows)
+	return s.model.AssignValues(a, s.fields, s.rows)
 }
 
 func (s *Scanner) Err() error {

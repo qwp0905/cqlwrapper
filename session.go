@@ -2,7 +2,7 @@ package cqlwrapper
 
 import (
 	"context"
-	"fmt"
+	"strings"
 
 	"github.com/gocql/gocql"
 	"github.com/pkg/errors"
@@ -41,34 +41,18 @@ func (s *Session) DeleteWithContext(ctx context.Context) *DeleteQueryBuilder {
 	return newDeleteQueryBuilder(ctx, s)
 }
 
-type argument struct {
-	field    string
-	operator op
-	arg      any
-}
-
-func (a *argument) query() string {
-	return fmt.Sprintf(`"%s" %s ?`, a.field, a.operator)
-}
-
-func (a *argument) getField() string {
-	return fmt.Sprintf(`"%s"`, a.field)
-}
-
-type op string
-
-const (
-	opEq  = op("=")
-	opGt  = op(">")
-	opGte = op(">=")
-	opLt  = op("<")
-	opLte = op("<=")
-	opIn  = op("IN")
-)
-
 type sort string
 
 const (
 	DESC = sort("DESC")
 	ASC  = sort("ASC")
 )
+
+func questionMarks(len int) string {
+	l := []string{}
+	for i := 0; i < len; i++ {
+		l = append(l, "?")
+	}
+
+	return strings.Join(l, ",")
+}
