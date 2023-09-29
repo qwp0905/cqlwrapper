@@ -118,7 +118,12 @@ func (m *Mapper) assign(v reflect.Value, t reflect.StructField, a any) (err erro
 	return nil
 }
 
-func (m *Mapper) AssignValues(a any, fields []string, values []any) error {
+func (m *Mapper) AssignValues(a any, fields []string, values []any) (err error) {
+	defer func() {
+		if r, ok := recover().(error); ok && r != nil {
+			err = r
+		}
+	}()
 	t, v := getTypeAndValue(a)
 	for i, field := range fields {
 		sourceIndex, ok := m.fields[field]
@@ -136,7 +141,12 @@ func (m *Mapper) AssignValues(a any, fields []string, values []any) error {
 	return nil
 }
 
-func (m *Mapper) AppendValues(a any, fields []string, values []any) error {
+func (m *Mapper) AppendValues(a any, fields []string, values []any) (err error) {
+	defer func() {
+		if r, ok := recover().(error); ok && r != nil {
+			err = r
+		}
+	}()
 	t, v := getTypeAndValue(a)
 	if t.Kind() != reflect.Slice {
 		return errors.Errorf("cannot append to %s", t)
